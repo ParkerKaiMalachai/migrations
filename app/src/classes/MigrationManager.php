@@ -19,6 +19,7 @@ final class MigrationManager implements MigrationManagerInterface
     public function __construct(PDO $connection, array $allFiles)
     {
         if (count($allFiles) > 0) {
+
             foreach ($allFiles as $file) {
                 $this->allMigrations[] = pathinfo($file, PATHINFO_FILENAME);
             }
@@ -41,7 +42,7 @@ final class MigrationManager implements MigrationManagerInterface
     private function setPendingMigrations(): void
     {
         $data = $this->connection->query("SELECT name FROM migrations")->fetchAll();
-        var_dump($data);
+
         $completedMigrations = array_column($data, 'name');
 
         $this->pendingMigrations = array_diff($this->allMigrations, $completedMigrations);
