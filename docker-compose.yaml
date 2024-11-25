@@ -7,6 +7,8 @@ services:
       - db
     networks:
       - php-migrate
+    environment:
+      - MIGRATE=${MIGRATE_ENV}
   nginx:
     image: nginx:latest
     ports:
