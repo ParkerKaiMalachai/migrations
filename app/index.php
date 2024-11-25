@@ -8,17 +8,27 @@ use src\classes\MigrationManager;
 
 $pdo = new PDO("mysql:host=db;dbname=seeds_db;charset=utf8", "seeds_user", "seeds");
 
-$manager = new MigrationManager($pdo);
+$migrationsFolder = sprintf('%s%s', str_replace(
+    '\\',
+    DIRECTORY_SEPARATOR,
+    realpath(dirname(__FILE__))
+), '/src/migrations/*.php');
+$allFiles = glob($migrationsFolder);
+
+
+$manager = new MigrationManager($pdo, $allFiles);
+
+$manager->runPendingMigration();
 
 $migrateValue = getenv('MIGRATE');
 
-switch ($migrateValue) {
-    case 'up': {
-        $manager->runPendingMigration();
-        break;
-    }
-    case 'down': {
-        $manager->rollbackMigration();
-        break;
-    }
-}
+// switch ($migrateValue) {
+//     case 'up': {
+//         $manager->runPendingMigration();
+//         break;
+//     }
+//     case 'down': {
+//         $manager->rollbackMigration();
+//         break;
+//     }
+// }

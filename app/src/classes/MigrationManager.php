@@ -6,8 +6,9 @@ namespace src\classes;
 
 use \PDO;
 use \src\classes\Migration;
+use \src\interfaces\MigrationManagerInterface;
 
-final class MigrationManager
+final class MigrationManager implements MigrationManagerInterface
 {
     private array $allMigrations = [];
 
@@ -15,17 +16,17 @@ final class MigrationManager
 
     private PDO $connection;
 
-    public function __construct(PDO $connection)
+    public function __construct(PDO $connection, array $allFiles)
     {
-        $migrationsFolder = str_replace('\\', DIRECTORY_SEPARATOR, realpath(dirname(__DIR__)));
-        $allFiles = glob($migrationsFolder . '/migrations/*.php');
-        foreach ($allFiles as $file) {
-            $this->allMigrations[] = pathinfo($file, PATHINFO_FILENAME);
+        if (count($allFiles) > 0) {
+            foreach ($allFiles as $file) {
+                $this->allMigrations[] = pathinfo($file, PATHINFO_FILENAME);
+            }
         }
 
         $this->connection = $connection;
     }
-    public function getMigrations(): array|bool
+    public function getMigrations(): array
     {
         return $this->allMigrations;
     }
@@ -37,37 +38,48 @@ final class MigrationManager
         return $this->pendingMigrations;
     }
 
-    public function setPendingMigrations(): void
+    private function setPendingMigrations(): void
     {
-        $data = $this->connection->query("SELECT name FROM migrations");
-
-        foreach ($data as $row) {
-            $completedMigrations[] = $row['name'];
-        }
+        $data = $this->connection->query("SELECT name FROM migrations")->fetchAll();
+        var_dump($data);
+        $completedMigrations = array_column($data, 'name');
 
         $this->pendingMigrations = array_diff($this->allMigrations, $completedMigrations);
     }
 
-    public function runPendingMigration(): void
+    public function runPendingMigration(): bool
     {
         $this->getPendingMigrations();
-        if (count($this->pendingMigrations) > 0) {
-            foreach ($this->pendingMigrations as $migrationClassName) {
-                $className = "src\\migrations\\" . $migrationClassName;
-                $migration = new $className();
-                $this->runMigration($migration, $migrationClassName);
-            }
+
+        if (count($this->pendingMigrations) === 0) {
+            return false;
         }
+
+        foreach ($this->pendingMigrations as $migrationClassName) {
+            $migration = $this->getInstanceOfMigration($migrationClassName);
+            $this->runMigration($migration, $migrationClassName);
+        }
+
+        return true;
     }
 
-    public function runMigration(Migration $migration, string $migrationName): void
+    private function getInstanceOfMigration(string $instanceName): object
+    {
+        $className = "src\\migrations\\" . $instanceName;
+
+        $migration = new $className();
+
+        return $migration;
+    }
+
+    private function runMigration(Migration $migration, string $migrationName): void
     {
         $this->connection->query($migration->up());
 
         $this->writeNewMigration($migrationName);
     }
 
-    public function writeNewMigration(string $name): void
+    private function writeNewMigration(string $name): void
     {
         $stmt = $this->connection->prepare("INSERT INTO migrations (name, executed_at) VALUES (?, CURRENT_TIMESTAMP())");
 
@@ -78,36 +90,36 @@ final class MigrationManager
     {
         $migrationArray = $this->getLatestMigration();
 
-        if (count($migrationArray)) {
-
-            $this->connection->query($migrationArray['migration']->down());
-
-            $this->removeLatestMigration($migrationArray['migrationName']);
+        if (count($migrationArray) === 0) {
+            return;
         }
+
+        $migration = $this->getInstanceOfMigration($migrationArray['migrationName']);
+
+        $this->removeLatestMigration($migrationArray['migrationName']);
+
+        $this->connection->query($migration->down());
+
     }
 
-    public function getLatestMigration(): array
+    private function getLatestMigration(): array
     {
-        $data = $this->connection->query("SELECT * FROM migrations WHERE executed_at=(SELECT MAX(executed_at) FROM migrations)");
+        $latestMigrationName = $this->connection
+            ->query("SELECT name FROM migrations WHERE id=(SELECT MAX(id) FROM migrations ORDER BY id DESC LIMIT 1)")
+            ->fetchColumn();
 
-        foreach ($data as $row) {
-            $latestMigrationName = $row['name'];
-        }
-        if (isset($latestMigrationName)) {
-            $className = "src\\migrations\\" . $latestMigrationName;
-            $migration = new $className();
-
-            return ['migration' => $migration, 'migrationName' => $latestMigrationName];
-        } else {
+        if (!isset($latestMigrationName)) {
             return [];
         }
+
+        return ['migrationName' => $latestMigrationName];
     }
 
-    public function removeLatestMigration(string $name): void
+    private function removeLatestMigration(string $name): void
     {
         $stmt = $this->connection->prepare("DELETE FROM migrations WHERE name=?");
 
-        $stmt->execute(array($name));
+        $stmt->execute([$name]);
     }
 }
 

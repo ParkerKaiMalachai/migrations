@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace src\classes;
 
 use src\interfaces\MigrationInterface;
+use src\classes\exceptions\EmptyAttributesException;
 
 abstract class Migration implements MigrationInterface
 {
@@ -12,14 +13,20 @@ abstract class Migration implements MigrationInterface
     {
         $query = "";
 
-        foreach ($values as $key => $value) {
-            $query .= $key . " " . $value . ", ";
+        if (count($values) === 0) {
+            throw new EmptyAttributesException('There should be at least one attribute');
         }
+
+        foreach ($values as $key => $value) {
+            $query .= sprintf('%s %s, ', $key, $value);
+        }
+
         if (count($constraints)) {
             foreach ($constraints as $value => $constraint) {
-                $query .= $constraint . " " . "($value)";
+                $query .= sprintf('%s (%s)', $constraint, $value);
             }
         }
+
         return "CREATE TABLE IF NOT EXISTS $name ($query)";
     }
 
